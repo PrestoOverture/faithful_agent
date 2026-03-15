@@ -5,6 +5,8 @@ import re
 from faithfulagent.comparator.matcher import match_claim
 from faithfulagent.comparator.numeric import check_numeric
 from faithfulagent.comparator.string import check_string
+from faithfulagent.comparator.unit import check_unit_mismatch
+from faithfulagent.comparator.derived import check_derived
 from faithfulagent.config import VerifyConfig
 from faithfulagent.schemas import Claim, MatchResult, ToolCall
 
@@ -44,6 +46,18 @@ def compare(
             result = check_numeric(
                 claim.extracted_value, expected_value, config.numeric
             )
+            if result.status == "error":
+                unit_result = check_unit_mismatch(
+                    claim.extracted_value, expected_value, config.unit
+                )
+                if unit_result is not None:
+                    result = unit_result
+            if result.status == "error":
+                derived_result = check_derived(
+                    claim.extracted_value, tool_calls, config.derived
+                )
+                if derived_result is not None:
+                    result = derived_result
         elif claim.claim_type in {"string", "date"}:
             result = check_string(
                 claim.extracted_value, expected_value, config.string

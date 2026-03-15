@@ -1,0 +1,17 @@
+{
+  "tool_calls": [
+    {
+      "call_id": "call_1",
+      "tool_name": "get_flights",
+      "response": {"price": 553, "airline": "Delta"}
+    }
+  ],
+  "agent_output": {
+    "text": "The flight costs 550 and is operated by Delta.",
+    "refs": [
+      {"span": [17, 20], "call_id": "call_1", "path": "$.price"},
+      {"span": [40, 45], "call_id": "call_1", "path": "$.airline"}
+    ]
+  },
+  "expected_verdict": "warn"
+}

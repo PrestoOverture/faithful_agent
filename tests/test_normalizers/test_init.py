@@ -20,14 +20,16 @@ def test_raw_format_is_default():
     assert isinstance(result[0], ToolCall)
 
 
-def test_openai_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        normalize(RAW_DATA, "openai")
+def test_openai_format_delegates():
+    oai = [{"id": "c1", "function": {"name": "get_price", "arguments": "{}"}, "response": {"price": 553}}]
+    result = normalize(oai, "openai")
+    assert len(result) == 1 and result[0].call_id == "c1"
 
 
-def test_langchain_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        normalize(RAW_DATA, "langchain")
+def test_langchain_format_delegates():
+    lc = [{"tool": "get_price", "tool_call_id": "c1", "output": {"price": 553}}]
+    result = normalize(lc, "langchain")
+    assert len(result) == 1 and result[0].call_id == "c1"
 
 
 def test_unknown_format_raises_value_error():

@@ -28,9 +28,13 @@ def test_strict_is_default_mode():
     assert len(claims) == 1
 
 
-def test_heuristic_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        parse("some text", [TOOL_CALL], "heuristic")
+def test_heuristic_mode_delegates():
+    # heuristic is now implemented; spaCy may or may not be installed
+    try:
+        claims = parse("price is 553", [TOOL_CALL], "heuristic")
+        assert isinstance(claims, list)
+    except ImportError:
+        pass  # spaCy not installed — acceptable in base env
 
 
 def test_unknown_mode_raises_value_error():

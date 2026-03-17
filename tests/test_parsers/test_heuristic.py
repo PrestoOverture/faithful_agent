@@ -1,6 +1,62 @@
 """Tests for faithfulagent/parsers/heuristic.py — spaCy NER path coverage."""
 
+import warnings
+from unittest.mock import patch
+
 import pytest
+
+from faithfulagent.parsers.heuristic import parse_heuristic
+from faithfulagent.schemas import ToolCall
+
+_TC_EMPTY: list[ToolCall] = []
+
+
+# ---------------------------------------------------------------------------
+# Regex-only fallback when spaCy is not available
+# ---------------------------------------------------------------------------
+
+
+def test_regex_fallback_when_spacy_missing():
+    """parse_heuristic returns regex claims and does not raise when spaCy is absent."""
+    with patch(
+        "faithfulagent.parsers.heuristic._load_spacy_model",
+        side_effect=ImportError("spaCy not installed"),
+    ):
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            claims = parse_heuristic("The price is 553 dollars", _TC_EMPTY)
+
+    assert len(claims) == 1
+    assert claims[0].claim_type == "numeric"
+    assert claims[0].extracted_value == "553"
+    assert claims[0].claim_id == "claim_0"
+
+
+def test_regex_fallback_issues_warning():
+    """A UserWarning is emitted when falling back to regex-only mode."""
+    with patch(
+        "faithfulagent.parsers.heuristic._load_spacy_model",
+        side_effect=ImportError("spaCy not installed"),
+    ):
+        with pytest.warns(UserWarning, match="spaCy not available"):
+            parse_heuristic("The price is 553 dollars", _TC_EMPTY)
+
+
+def test_regex_fallback_returns_multiple_claims():
+    """All regex-matched numbers are returned in fallback mode."""
+    with patch(
+        "faithfulagent.parsers.heuristic._load_spacy_model",
+        side_effect=ImportError("spaCy not installed"),
+    ):
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            claims = parse_heuristic("costs 553 and takes 270 minutes", _TC_EMPTY)
+
+    values = [c.extracted_value for c in claims]
+    assert "553" in values
+    assert "270" in values
+    assert [c.claim_id for c in claims] == [f"claim_{i}" for i in range(len(claims))]
+
 
 spacy = pytest.importorskip("spacy", reason="spaCy not installed")
 

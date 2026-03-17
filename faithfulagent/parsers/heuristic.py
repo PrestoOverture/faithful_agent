@@ -1,6 +1,7 @@
 """Heuristic parser: regex + optional spaCy NER claim extraction."""
 
 import re
+import warnings
 
 from faithfulagent.schemas import Claim, TextSpan, ToolCall
 
@@ -79,7 +80,17 @@ def parse_heuristic(agent_output: str, tool_calls: list[ToolCall]) -> list[Claim
         )
         claim_index += 1
 
-    nlp = _load_spacy_model()
+    try:
+        nlp = _load_spacy_model()
+    except ImportError:
+        warnings.warn(
+            "spaCy not available, heuristic mode using regex-only extraction",
+            stacklevel=2,
+        )
+        for i, claim in enumerate(regex_claims):
+            claim.claim_id = f"claim_{i}"
+        return regex_claims
+
     doc = nlp(agent_output)
 
     spacy_claims: list[Claim] = []

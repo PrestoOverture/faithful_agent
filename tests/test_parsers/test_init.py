@@ -29,12 +29,12 @@ def test_strict_is_default_mode():
 
 
 def test_heuristic_mode_delegates():
-    # heuristic is now implemented; spaCy may or may not be installed
-    try:
+    # heuristic always succeeds now — falls back to regex-only if spaCy is absent
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         claims = parse("price is 553", [TOOL_CALL], "heuristic")
-        assert isinstance(claims, list)
-    except ImportError:
-        pass  # spaCy not installed — acceptable in base env
+    assert isinstance(claims, list)
 
 
 def test_unknown_mode_raises_value_error():

@@ -11,6 +11,7 @@ dependencies = [
   "pydantic>=2.0",
   "jsonpath-ng>=1.6",
   "rapidfuzz>=3.0",
+  "openai>=2.28.0",
 ]
 
 [project.optional-dependencies]

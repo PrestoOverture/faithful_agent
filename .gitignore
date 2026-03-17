@@ -30,3 +30,6 @@ AGENTS.md
 CLAUDE.md
 docs/
 README.md
+.gitignore
+legacy_docs/
+.env

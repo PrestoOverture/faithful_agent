@@ -7,6 +7,24 @@ from faithfulagent.schemas import Claim, TextSpan, ToolCall
 CURRENCY_SYMBOLS = {"$", "¥", "€", "£"}
 NUMBER_PATTERN = re.compile(r"[¥$€£]\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?")
 
+# Patterns for time and date strings whose digit components should not be
+# extracted as standalone numeric claims.
+_TIME_PATTERN = re.compile(
+    r"\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?",
+)
+_ISO_DATE_PATTERN = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?",
+)
+
+
+def _time_date_spans(text: str) -> list[tuple[int, int]]:
+    """Return character spans occupied by time or ISO-date patterns."""
+    spans: list[tuple[int, int]] = []
+    for pattern in (_ISO_DATE_PATTERN, _TIME_PATTERN):
+        for m in pattern.finditer(text):
+            spans.append((m.start(), m.end()))
+    return spans
+
 _nlp = None
 _SPACY_ERROR = (
     "spaCy and en_core_web_sm are required for heuristic mode. Install with: "
@@ -31,7 +49,15 @@ def parse_heuristic(agent_output: str, tool_calls: list[ToolCall]) -> list[Claim
     regex_claims: list[Claim] = []
     claim_index = 0
 
+    time_date_spans = _time_date_spans(agent_output)
+
     for match in NUMBER_PATTERN.finditer(agent_output):
+        m_start, m_end = match.start(), match.end()
+        if any(
+            not (td_end <= m_start or td_start >= m_end)
+            for td_start, td_end in time_date_spans
+        ):
+            continue
         raw = match.group()
         has_currency = raw[0] in CURRENCY_SYMBOLS
         cleaned = raw.replace(",", "")

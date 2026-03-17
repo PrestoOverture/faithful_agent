@@ -171,3 +171,42 @@ def test_spacy_claims_have_no_source_ref():
     claims = parse_heuristic("Apple is great.", _TC)
     for c in claims:
         assert c.source_ref is None
+
+
+# ---------------------------------------------------------------------------
+# Time/date pattern exclusion: digits inside time/date spans are not claims
+# ---------------------------------------------------------------------------
+
+
+def test_time_only_text_yields_no_numeric_claims():
+    # All digits are inside time patterns — nothing should survive
+    claims = parse_heuristic("departs at 08:30 AM and arrives at 01:00 PM", _TC)
+    numeric_claims = [c for c in claims if c.claim_type == "numeric"]
+    assert len(numeric_claims) == 0
+
+
+def test_number_before_time_not_suppressed():
+    # 553 is outside any time pattern; 8:30 AM digits should be suppressed
+    claims = parse_heuristic("costs 553 and departs at 8:30 AM", _TC)
+    numeric_claims = [c for c in claims if c.claim_type == "numeric"]
+    values = [c.extracted_value for c in numeric_claims]
+    assert "553" in values
+    assert "8" not in values
+    assert "30" not in values
+
+
+def test_iso_datetime_yields_no_numeric_claims():
+    claims = parse_heuristic("date is 2025-08-15T08:30:00", _TC)
+    numeric_claims = [c for c in claims if c.claim_type == "numeric"]
+    assert len(numeric_claims) == 0
+
+
+def test_numbers_around_time_only_non_time_extracted():
+    # 270 and 2 are outside time patterns; 3 and 45 are inside "3:45 PM"
+    claims = parse_heuristic("price is 270 at 3:45 PM with 2 stops", _TC)
+    numeric_claims = [c for c in claims if c.claim_type == "numeric"]
+    values = [c.extracted_value for c in numeric_claims]
+    assert "270" in values
+    assert "2" in values
+    assert "3" not in values
+    assert "45" not in values

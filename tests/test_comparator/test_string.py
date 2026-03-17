@@ -147,3 +147,36 @@ def test_warning_severity_is_warning():
 def test_error_severity_is_error():
     r = check_string("Lufthansa", "Delta", DEFAULT)
     assert r.severity == "error"
+
+
+# ---------------------------------------------------------------------------
+# Substring containment: expected is substring of observed (and vice versa)
+# ---------------------------------------------------------------------------
+
+
+def test_expected_substring_of_observed_is_pass():
+    # "China Eastern" ⊂ "China Eastern Airlines"
+    r = check_string("China Eastern Airlines", "China Eastern", DEFAULT)
+    assert r.status == "pass"
+    assert r.mismatch_category is None
+    assert r.diff["note"] == "substring_match"
+
+
+def test_observed_substring_of_expected_is_pass():
+    # reversed direction
+    r = check_string("China Eastern", "China Eastern Airlines", DEFAULT)
+    assert r.status == "pass"
+    assert r.mismatch_category is None
+    assert r.diff["note"] == "substring_match"
+
+
+def test_no_containment_does_not_trigger_substring_match():
+    # "Delta" and "United Airlines" share no containment
+    r = check_string("Delta", "United Airlines", DEFAULT)
+    assert r.status in ("warning", "error")
+    assert r.diff.get("note") != "substring_match"
+
+
+def test_substring_match_severity_is_info():
+    r = check_string("China Eastern Airlines", "China Eastern", DEFAULT)
+    assert r.severity == "info"

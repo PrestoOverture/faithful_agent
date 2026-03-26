@@ -5,6 +5,7 @@ import json
 import uuid
 
 from faithfulagent import Claim, MatchResult, Report, ReportSummary, SourceRef, TextSpan, ToolCall
+from faithfulagent.schemas import Constraint, CrossClaimResult
 
 
 def test_textspan_valid():
@@ -169,3 +170,323 @@ def test_public_api_imports():
     from faithfulagent import Claim, MatchResult, Report, ReportSummary, SourceRef, TextSpan, ToolCall
     for cls in [Claim, MatchResult, Report, ReportSummary, SourceRef, TextSpan, ToolCall]:
         assert cls is not None
+
+
+def _make_cross_claim_result(**kwargs):
+    defaults = {
+        "constraint_id": "constraint_1",
+        "constraint_type": "comparison",
+        "status": "pass",
+        "involved_claim_ids": ["claim_1", "claim_2"],
+        "observed_values": {"claim_1": 480.0, "claim_2": 553.0},
+        "expected_relationship": "480.0 < 553.0",
+    }
+    return CrossClaimResult(**{**defaults, **kwargs})
+
+
+def test_v01_model_fields_unchanged():
+    assert set(TextSpan.model_fields) == {"start", "end", "text"}
+    assert set(SourceRef.model_fields) == {"call_id", "path", "transform"}
+    assert set(ToolCall.model_fields) == {
+        "call_id",
+        "tool_name",
+        "request",
+        "response",
+        "timestamp",
+    }
+    assert set(Claim.model_fields) == {
+        "claim_id",
+        "claim_type",
+        "text_span",
+        "extracted_value",
+        "source_ref",
+    }
+    assert set(MatchResult.model_fields) == {
+        "claim_id",
+        "matched_call_id",
+        "matched_field",
+        "expected_value",
+        "observed_value",
+        "status",
+        "mismatch_category",
+        "severity",
+        "match_confidence",
+        "diff",
+        "recommended_action",
+    }
+
+
+def test_constraint_valid_comparison_instantiates():
+    constraint = Constraint(
+        constraint_id="constraint_1",
+        constraint_type="comparison",
+        lhs_claim_id="claim_1",
+        operator="<",
+        rhs_claim_id="claim_2",
+    )
+    assert constraint.constraint_type == "comparison"
+
+
+def test_constraint_valid_ranking_instantiates():
+    constraint = Constraint(
+        constraint_id="constraint_1",
+        constraint_type="ranking",
+        ranked_claim_id="claim_1",
+        rank_type="min",
+        candidate_claim_ids=["claim_1", "claim_2", "claim_3"],
+    )
+    assert constraint.constraint_type == "ranking"
+
+
+def test_constraint_valid_sum_instantiates():
+    constraint = Constraint(
+        constraint_id="constraint_1",
+        constraint_type="sum",
+        total_claim_id="claim_total",
+        component_claim_ids=["claim_1", "claim_2"],
+    )
+    assert constraint.constraint_type == "sum"
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_message"),
+    [
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "comparison",
+                "operator": "<",
+                "rhs_claim_id": "claim_2",
+            },
+            "lhs_claim_id",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "comparison",
+                "lhs_claim_id": "claim_1",
+                "rhs_claim_id": "claim_2",
+            },
+            "operator",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "comparison",
+                "lhs_claim_id": "claim_1",
+                "operator": "<",
+            },
+            "rhs_claim_id",
+        ),
+    ],
+)
+def test_constraint_comparison_missing_required_fields_raise(payload, expected_message):
+    with pytest.raises(ValidationError, match=expected_message):
+        Constraint(**payload)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_message"),
+    [
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "ranking",
+                "rank_type": "min",
+                "candidate_claim_ids": ["claim_1", "claim_2"],
+            },
+            "ranked_claim_id",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "ranking",
+                "ranked_claim_id": "claim_1",
+                "candidate_claim_ids": ["claim_1", "claim_2"],
+            },
+            "rank_type",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "ranking",
+                "ranked_claim_id": "claim_1",
+                "rank_type": "min",
+            },
+            "candidate_claim_ids",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "ranking",
+                "ranked_claim_id": "claim_3",
+                "rank_type": "min",
+                "candidate_claim_ids": ["claim_1", "claim_2"],
+            },
+            "ranked_claim_id",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "ranking",
+                "ranked_claim_id": "claim_1",
+                "rank_type": "min",
+                "candidate_claim_ids": ["claim_1"],
+            },
+            "at least 2",
+        ),
+    ],
+)
+def test_constraint_ranking_invalid_shapes_raise(payload, expected_message):
+    with pytest.raises(ValidationError, match=expected_message):
+        Constraint(**payload)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_message"),
+    [
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "sum",
+                "component_claim_ids": ["claim_1", "claim_2"],
+            },
+            "total_claim_id",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "sum",
+                "total_claim_id": "claim_total",
+            },
+            "component_claim_ids",
+        ),
+        (
+            {
+                "constraint_id": "constraint_1",
+                "constraint_type": "sum",
+                "total_claim_id": "claim_total",
+                "component_claim_ids": ["claim_1"],
+            },
+            "at least 2",
+        ),
+    ],
+)
+def test_constraint_sum_invalid_shapes_raise(payload, expected_message):
+    with pytest.raises(ValidationError, match=expected_message):
+        Constraint(**payload)
+
+
+def test_constraint_invalid_type_raises():
+    with pytest.raises(ValidationError, match="constraint_type"):
+        Constraint(constraint_id="constraint_1", constraint_type="unknown")
+
+
+def test_constraint_model_dump_json_is_valid_json():
+    constraint = Constraint(
+        constraint_id="constraint_1",
+        constraint_type="sum",
+        total_claim_id="claim_total",
+        component_claim_ids=["claim_1", "claim_2"],
+    )
+    assert json.loads(constraint.model_dump_json())["constraint_id"] == "constraint_1"
+
+
+def test_cross_claim_result_passing_instantiates_with_none_violation_category():
+    result = _make_cross_claim_result(status="pass", violation_category=None)
+    assert result.status == "pass"
+    assert result.violation_category is None
+
+
+def test_cross_claim_result_failing_instantiates_with_violation_category():
+    result = _make_cross_claim_result(
+        status="error",
+        violation_category="comparison_violated",
+        diff={"lhs": 553.0, "rhs": 480.0, "operator": "<", "held": False},
+    )
+    assert result.status == "error"
+    assert result.violation_category == "comparison_violated"
+
+
+def test_cross_claim_result_defaults_are_error_and_high():
+    result = _make_cross_claim_result()
+    assert result.severity == "error"
+    assert result.match_confidence == "high"
+
+
+def test_cross_claim_result_model_dump_json_is_valid_json():
+    result = _make_cross_claim_result(
+        constraint_type="sum",
+        involved_claim_ids=["claim_total", "claim_1", "claim_2"],
+        observed_values={"claim_total": 900.0, "claim_1": 340.0, "claim_2": 560.0},
+        expected_relationship="sum=900.0, total=900.0",
+    )
+    assert json.loads(result.model_dump_json())["constraint_type"] == "sum"
+
+
+def test_report_summary_v01_constructor_defaults_cross_claim_violations_to_zero():
+    summary = ReportSummary(total_claims=3, passed=3, warnings=0, errors=0, verdict="pass")
+    assert summary.cross_claim_violations == 0
+
+
+def test_report_summary_stores_explicit_cross_claim_violations():
+    summary = ReportSummary(
+        total_claims=3,
+        passed=1,
+        warnings=1,
+        errors=1,
+        cross_claim_violations=3,
+        verdict="fail",
+    )
+    assert summary.cross_claim_violations == 3
+
+
+def test_report_v01_constructor_defaults_cross_claim_results_and_summary_counter():
+    report = Report(mode="strict", summary=_make_summary(), claims=[])
+    assert report.cross_claim_results == []
+    assert report.summary.cross_claim_violations == 0
+
+
+def test_report_stores_populated_cross_claim_results():
+    results = [
+        _make_cross_claim_result(
+            constraint_id="constraint_1",
+            constraint_type="comparison",
+            status="error",
+            violation_category="comparison_violated",
+        ),
+        _make_cross_claim_result(
+            constraint_id="constraint_2",
+            constraint_type="sum",
+            status="pass",
+            involved_claim_ids=["claim_total", "claim_1", "claim_2"],
+            observed_values={"claim_total": 850.0, "claim_1": 340.0, "claim_2": 510.0},
+            expected_relationship="sum=850.0, total=850.0",
+        ),
+    ]
+    report = Report(
+        mode="strict",
+        summary=_make_summary(cross_claim_violations=1, verdict="fail"),
+        claims=[],
+        cross_claim_results=results,
+    )
+    assert report.cross_claim_results == results
+    assert report.summary.cross_claim_violations == 1
+
+
+def test_report_model_dump_json_includes_cross_claim_results_and_cross_claim_violations():
+    report = Report(
+        mode="strict",
+        summary=_make_summary(cross_claim_violations=2, verdict="fail"),
+        claims=[],
+        cross_claim_results=[
+            _make_cross_claim_result(
+                constraint_id="constraint_1",
+                status="error",
+                violation_category="comparison_violated",
+            )
+        ],
+    )
+    parsed = json.loads(report.model_dump_json())
+    assert "cross_claim_results" in parsed
+    assert parsed["summary"]["cross_claim_violations"] == 2

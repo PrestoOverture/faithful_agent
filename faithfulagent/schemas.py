@@ -64,11 +64,70 @@ class MatchResult(BaseModel):
     recommended_action: Optional[str] = None
 
 
+class Constraint(BaseModel):
+    constraint_id: str
+    constraint_type: Literal["comparison", "ranking", "sum"]
+    lhs_claim_id: Optional[str] = None
+    operator: Optional[Literal["<", ">", "<=", ">=", "=="]] = None
+    rhs_claim_id: Optional[str] = None
+    ranked_claim_id: Optional[str] = None
+    rank_type: Optional[Literal["min", "max"]] = None
+    candidate_claim_ids: Optional[list[str]] = None
+    total_claim_id: Optional[str] = None
+    component_claim_ids: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def check_fields_for_type(self) -> "Constraint":
+        if self.constraint_type == "comparison":
+            if not (self.lhs_claim_id and self.operator and self.rhs_claim_id):
+                raise ValueError(
+                    "comparison constraints require lhs_claim_id, operator, rhs_claim_id"
+                )
+        elif self.constraint_type == "ranking":
+            if not (
+                self.ranked_claim_id
+                and self.rank_type
+                and self.candidate_claim_ids is not None
+            ):
+                raise ValueError(
+                    "ranking constraints require ranked_claim_id, rank_type, candidate_claim_ids"
+                )
+            if self.ranked_claim_id not in self.candidate_claim_ids:
+                raise ValueError("ranked_claim_id must be in candidate_claim_ids")
+            if len(self.candidate_claim_ids) < 2:
+                raise ValueError("ranking constraints require at least 2 candidates")
+        elif self.constraint_type == "sum":
+            if not (self.total_claim_id and self.component_claim_ids is not None):
+                raise ValueError(
+                    "sum constraints require total_claim_id and component_claim_ids"
+                )
+            if len(self.component_claim_ids) < 2:
+                raise ValueError("sum constraints require at least 2 components")
+        return self
+
+
+class CrossClaimResult(BaseModel):
+    constraint_id: str
+    constraint_type: Literal["comparison", "ranking", "sum"]
+    status: Literal["pass", "error"]
+    violation_category: Optional[
+        Literal["comparison_violated", "ranking_violated", "sum_mismatch"]
+    ] = None
+    severity: Literal["error", "warning"] = "error"
+    match_confidence: Literal["high", "medium"] = "high"
+    involved_claim_ids: list[str]
+    observed_values: dict[str, Any]
+    expected_relationship: str
+    diff: Optional[dict] = None
+    recommended_action: Optional[str] = None
+
+
 class ReportSummary(BaseModel):
     total_claims: int
     passed: int
     warnings: int
     errors: int
+    cross_claim_violations: int = 0
     verdict: Literal["pass", "warn", "fail"]
 
 
@@ -78,6 +137,7 @@ class Report(BaseModel):
     mode: Literal["strict", "heuristic"]
     summary: ReportSummary
     claims: list[MatchResult]
+    cross_claim_results: list[CrossClaimResult] = []
 
     def model_post_init(self, __context: Any) -> None:
         if not self.verification_id:

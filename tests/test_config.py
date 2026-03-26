@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from faithfulagent.config import (
+    CrossClaimCheckConfig,
     DerivedCheckConfig,
     NumericCheckConfig,
     StringCheckConfig,
@@ -119,3 +120,57 @@ def test_verify_config_unknown_key_raises():
 def test_from_dict_unknown_key_in_sub_config_raises():
     with pytest.raises(ValidationError):
         VerifyConfig.from_dict({"numeric": {"bogus": 1}})
+
+
+def test_cross_claim_check_config_defaults():
+    cfg = CrossClaimCheckConfig()
+    assert cfg.enabled is True
+    assert cfg.sum_tolerance == 0.01
+
+
+def test_cross_claim_check_config_extra_fields_rejected():
+    with pytest.raises(ValidationError):
+        CrossClaimCheckConfig(enabled=True, sum_tolerance=0.01, bogus=True)
+
+
+def test_verify_config_defaults_include_cross_claim_defaults():
+    cfg = VerifyConfig()
+    assert cfg.cross_claim.enabled is True
+    assert cfg.cross_claim.sum_tolerance == 0.01
+
+
+def test_verify_config_from_dict_empty_dict_defaults_cross_claim():
+    cfg = VerifyConfig.from_dict({})
+    assert cfg.cross_claim.enabled is True
+    assert cfg.cross_claim.sum_tolerance == 0.01
+
+
+def test_verify_config_from_dict_cross_claim_enabled_override():
+    cfg = VerifyConfig.from_dict({"cross_claim": {"enabled": False}})
+    assert cfg.cross_claim.enabled is False
+    assert cfg.cross_claim.sum_tolerance == 0.01
+
+
+def test_verify_config_from_dict_cross_claim_sum_tolerance_override():
+    cfg = VerifyConfig.from_dict({"cross_claim": {"sum_tolerance": 0.05}})
+    assert cfg.cross_claim.enabled is True
+    assert cfg.cross_claim.sum_tolerance == 0.05
+
+
+def test_verify_config_from_dict_existing_v01_overrides_still_work():
+    cfg = VerifyConfig.from_dict(
+        {
+            "numeric": {"tolerance": 0.1, "allow_rounding": False},
+            "string": {"case_sensitive": True, "fuzzy_threshold": 0.9},
+            "unit": {"allow_conversion": False},
+            "derived": {"tolerance": 0.05},
+        }
+    )
+    assert cfg.numeric.tolerance == 0.1
+    assert cfg.numeric.allow_rounding is False
+    assert cfg.string.case_sensitive is True
+    assert cfg.string.fuzzy_threshold == 0.9
+    assert cfg.unit.allow_conversion is False
+    assert cfg.derived.tolerance == 0.05
+    assert cfg.cross_claim.enabled is True
+    assert cfg.cross_claim.sum_tolerance == 0.01

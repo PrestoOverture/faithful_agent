@@ -30,6 +30,13 @@ class DerivedCheckConfig(BaseModel):
     tolerance: float = 0.01
 
 
+class CrossClaimCheckConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    sum_tolerance: float = 0.01
+
+
 class VerifyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -37,6 +44,7 @@ class VerifyConfig(BaseModel):
     string: StringCheckConfig = StringCheckConfig()
     unit: UnitCheckConfig = UnitCheckConfig()
     derived: DerivedCheckConfig = DerivedCheckConfig()
+    cross_claim: CrossClaimCheckConfig = CrossClaimCheckConfig()
 
     @classmethod
     def from_dict(cls, raw: dict) -> "VerifyConfig":
@@ -45,4 +53,5 @@ class VerifyConfig(BaseModel):
             string=StringCheckConfig(**raw.get("string", {})),
             unit=UnitCheckConfig(**raw.get("unit", {})),
             derived=DerivedCheckConfig(**raw.get("derived", {})),
+            cross_claim=CrossClaimCheckConfig(**raw.get("cross_claim", {})),
         )

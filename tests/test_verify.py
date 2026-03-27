@@ -1,4 +1,7 @@
-"""End-to-end integration tests for verify() — Phase 16, Step 16.1."""
+"""End-to-end integration tests for verify()."""
+
+import inspect
+import json
 
 import pytest
 
@@ -168,3 +171,82 @@ def test_two_reports_have_different_verification_ids():
     r1 = verify(STRICT_ALL_PASS, RAW_TC, mode="strict")
     r2 = verify(STRICT_ALL_PASS, RAW_TC, mode="strict")
     assert r1.verification_id != r2.verification_id
+
+
+# ── cross-claim wiring ──────────────────────────────────────────────────────
+
+CROSS_TC = [
+    {
+        "call_id": "c1",
+        "tool_name": "get_flights",
+        "response": {"price_a": 553, "price_b": 480, "airline": "Delta"},
+    }
+]
+
+STRICT_NO_CONSTRAINTS = {
+    "text": "Flight A costs 553. Flight B costs 480.",
+    "refs": [
+        {"span": [15, 18], "call_id": "c1", "path": "$.price_a"},
+        {"span": [35, 38], "call_id": "c1", "path": "$.price_b"},
+    ],
+}
+
+STRICT_COMPARISON_VIOLATION = {
+    "text": "Flight A costs 553. Flight B costs 480.",
+    "refs": [
+        {"span": [15, 18], "call_id": "c1", "path": "$.price_a"},
+        {"span": [35, 38], "call_id": "c1", "path": "$.price_b"},
+    ],
+    "constraints": [
+        {
+            "constraint_id": "cmp_1",
+            "constraint_type": "comparison",
+            "lhs_ref_index": 0,
+            "operator": "<",
+            "rhs_ref_index": 1,
+        }
+    ],
+}
+
+
+def test_verify_strict_no_constraints_backward_compat():
+    report = verify(STRICT_NO_CONSTRAINTS, CROSS_TC, mode="strict")
+    assert report.cross_claim_results == []
+    assert report.summary.cross_claim_violations == 0
+
+
+def test_verify_strict_with_comparison_constraint():
+    report = verify(STRICT_COMPARISON_VIOLATION, CROSS_TC, mode="strict")
+    assert len(report.cross_claim_results) == 1
+    assert report.cross_claim_results[0].status == "error"
+    assert report.cross_claim_results[0].violation_category == "comparison_violated"
+    assert report.cross_claim_results[0].severity == "error"
+    assert report.cross_claim_results[0].match_confidence == "high"
+    assert report.summary.cross_claim_violations == 1
+
+
+def test_verify_strict_cross_claim_disabled():
+    report = verify(
+        STRICT_COMPARISON_VIOLATION,
+        CROSS_TC,
+        mode="strict",
+        checks={"cross_claim": {"enabled": False}},
+    )
+    assert report.cross_claim_results == []
+
+
+def test_verify_signature_unchanged():
+    signature = inspect.signature(verify)
+    assert list(signature.parameters) == [
+        "agent_output",
+        "tool_calls",
+        "mode",
+        "source_format",
+        "checks",
+    ]
+
+
+def test_verify_report_json_serializable_with_cross_claims():
+    report = verify(STRICT_COMPARISON_VIOLATION, CROSS_TC, mode="strict")
+    parsed = json.loads(report.model_dump_json())
+    assert "cross_claim_results" in parsed

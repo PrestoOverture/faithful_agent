@@ -11,6 +11,7 @@ from faithfulagent.config import VerifyConfig
 from faithfulagent.normalizers import normalize
 from faithfulagent.parsers import parse
 from faithfulagent.comparator import compare
+from faithfulagent.cross_checker import check_cross_claims
 from faithfulagent.reporter import generate_report
 
 
@@ -23,9 +24,12 @@ def verify(
 ) -> Report:
     config = VerifyConfig.from_dict(checks or {})
     normalized = normalize(tool_calls, source_format)
-    claims, _constraints = parse(agent_output, normalized, mode)
-    results = compare(claims, normalized, config)
-    report = generate_report(results, mode)
+    claims, constraints = parse(agent_output, normalized, mode)
+    match_results = compare(claims, normalized, config)
+    cross_claim_results = check_cross_claims(
+        claims, constraints, match_results, config.cross_claim, mode
+    )
+    report = generate_report(match_results, mode, cross_claim_results)
     return report
 
 __all__ = [

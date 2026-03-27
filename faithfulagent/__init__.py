@@ -23,7 +23,7 @@ def verify(
 ) -> Report:
     config = VerifyConfig.from_dict(checks or {})
     normalized = normalize(tool_calls, source_format)
-    claims = parse(agent_output, normalized, mode)
+    claims, _constraints = parse(agent_output, normalized, mode)
     results = compare(claims, normalized, config)
     report = generate_report(results, mode)
     return report

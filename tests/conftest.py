@@ -18,3 +18,18 @@ def strict_mismatch():
 @pytest.fixture
 def strict_rounding():
     return json.loads((FIXTURES_DIR / "strict_rounding.json").read_text())
+
+
+@pytest.fixture
+def strict_comparison():
+    return json.loads((FIXTURES_DIR / "strict_comparison.json").read_text())
+
+
+@pytest.fixture
+def strict_ranking():
+    return json.loads((FIXTURES_DIR / "strict_ranking.json").read_text())
+
+
+@pytest.fixture
+def strict_sum():
+    return json.loads((FIXTURES_DIR / "strict_sum.json").read_text())

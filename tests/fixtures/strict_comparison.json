@@ -1,0 +1,26 @@
+{
+  "tool_calls": [
+    {
+      "call_id": "call_prices",
+      "tool_name": "get_prices",
+      "response": {"price_a": 553, "price_b": 480}
+    }
+  ],
+  "agent_output": {
+    "text": "Flight A costs 553. Flight B costs 480.",
+    "refs": [
+      {"span": [15, 18], "call_id": "call_prices", "path": "$.price_a"},
+      {"span": [35, 38], "call_id": "call_prices", "path": "$.price_b"}
+    ],
+    "constraints": [
+      {
+        "constraint_id": "cmp_1",
+        "constraint_type": "comparison",
+        "lhs_ref_index": 0,
+        "operator": "<",
+        "rhs_ref_index": 1
+      }
+    ]
+  },
+  "expected_verdict": "fail"
+}

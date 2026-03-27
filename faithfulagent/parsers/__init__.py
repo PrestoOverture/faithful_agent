@@ -11,5 +11,5 @@ def parse(
     if mode == "strict":
         return parse_strict(agent_output, tool_calls)
     if mode == "heuristic":
-        return parse_heuristic(agent_output, tool_calls), []
+        return parse_heuristic(agent_output, tool_calls)
     raise ValueError(f"Unknown mode: '{mode}'")

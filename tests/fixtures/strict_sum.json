@@ -1,0 +1,42 @@
+{
+  "tool_calls": [
+    {
+      "call_id": "call_flights",
+      "tool_name": "get_flights",
+      "response": {"amount": 340}
+    },
+    {
+      "call_id": "call_hotel",
+      "tool_name": "get_hotel",
+      "response": {"amount": 450}
+    },
+    {
+      "call_id": "call_transfers",
+      "tool_name": "get_transfers",
+      "response": {"amount": 60}
+    },
+    {
+      "call_id": "call_total",
+      "tool_name": "get_total",
+      "response": {"amount": 900}
+    }
+  ],
+  "agent_output": {
+    "text": "Flights 340, hotel 450, transfers 60. Total: 900.",
+    "refs": [
+      {"span": [8, 11], "call_id": "call_flights", "path": "$.amount"},
+      {"span": [19, 22], "call_id": "call_hotel", "path": "$.amount"},
+      {"span": [34, 36], "call_id": "call_transfers", "path": "$.amount"},
+      {"span": [45, 48], "call_id": "call_total", "path": "$.amount"}
+    ],
+    "constraints": [
+      {
+        "constraint_id": "sum_1",
+        "constraint_type": "sum",
+        "total_ref_index": 3,
+        "component_ref_indices": [0, 1, 2]
+      }
+    ]
+  },
+  "expected_verdict": "fail"
+}

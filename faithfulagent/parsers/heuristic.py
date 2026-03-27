@@ -3,10 +3,22 @@
 import re
 import warnings
 
-from faithfulagent.schemas import Claim, TextSpan, ToolCall
+from faithfulagent.schemas import Claim, Constraint, TextSpan, ToolCall
 
 CURRENCY_SYMBOLS = {"$", "¥", "€", "£"}
 NUMBER_PATTERN = re.compile(r"[¥$€£]\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?")
+_SUM_CONSTRAINT_PATTERN = re.compile(
+    r"(?:"
+    r"\b(?:grand\s+total|subtotal|overall\s+cost|combined|total|sum)\b"
+    r"(?:\s*(?::|=|is)\s*|\s+)"
+    r"(?P<value_after>[¥$€£]?\d[\d,]*(?:\.\d+)?)"
+    r"|"
+    r"(?P<value_before>[¥$€£]?\d[\d,]*(?:\.\d+)?)"
+    r"(?:\s*(?::|=)\s*|\s+)"
+    r"\b(?:grand\s+total|subtotal|overall\s+cost|combined|total|sum)\b"
+    r")",
+    re.IGNORECASE,
+)
 
 # Patterns for time and date strings whose digit components should not be
 # extracted as standalone numeric claims.
@@ -46,7 +58,71 @@ def _load_spacy_model():
         raise ImportError(_SPACY_ERROR) from exc
 
 
-def parse_heuristic(agent_output: str, tool_calls: list[ToolCall]) -> list[Claim]:
+def _normalize_numeric_value(value: str) -> float | None:
+    cleaned = (
+        value.replace(",", "")
+        .replace("$", "")
+        .replace("¥", "")
+        .replace("€", "")
+        .replace("£", "")
+    )
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _detect_sum_constraints(claims: list[Claim], text: str) -> list[Constraint]:
+    constraints: list[Constraint] = []
+
+    for match in _SUM_CONSTRAINT_PATTERN.finditer(text):
+        value_group = "value_after" if match.group("value_after") else "value_before"
+        matched_value = match.group(value_group)
+        value_start, value_end = match.span(value_group)
+        normalized_value = _normalize_numeric_value(matched_value)
+        if normalized_value is None:
+            continue
+
+        total_claim = next(
+            (
+                claim
+                for claim in claims
+                if claim.claim_type in ("numeric", "currency")
+                and _normalize_numeric_value(str(claim.extracted_value)) == normalized_value
+                and not (
+                    claim.text_span.end <= value_start
+                    or claim.text_span.start >= value_end
+                )
+            ),
+            None,
+        )
+        if total_claim is None:
+            continue
+
+        component_claim_ids = [
+            claim.claim_id
+            for claim in claims
+            if claim.claim_type in ("numeric", "currency")
+            and claim.claim_id != total_claim.claim_id
+        ]
+        if len(component_claim_ids) < 2:
+            continue
+
+        constraints.append(
+            Constraint(
+                constraint_id=f"heuristic_sum_{len(constraints)}",
+                constraint_type="sum",
+                total_claim_id=total_claim.claim_id,
+                component_claim_ids=component_claim_ids,
+            )
+        )
+
+    return constraints
+
+
+def parse_heuristic(
+    agent_output: str, tool_calls: list[ToolCall]
+) -> tuple[list[Claim], list[Constraint]]:
     regex_claims: list[Claim] = []
     claim_index = 0
 
@@ -89,7 +165,8 @@ def parse_heuristic(agent_output: str, tool_calls: list[ToolCall]) -> list[Claim
         )
         for i, claim in enumerate(regex_claims):
             claim.claim_id = f"claim_{i}"
-        return regex_claims
+        constraints = _detect_sum_constraints(regex_claims, agent_output)
+        return regex_claims, constraints
 
     doc = nlp(agent_output)
 
@@ -136,4 +213,5 @@ def parse_heuristic(agent_output: str, tool_calls: list[ToolCall]) -> list[Claim
     for i, claim in enumerate(merged):
         claim.claim_id = f"claim_{i}"
 
-    return merged
+    constraints = _detect_sum_constraints(merged, agent_output)
+    return merged, constraints

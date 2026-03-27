@@ -250,3 +250,152 @@ def test_verify_report_json_serializable_with_cross_claims():
     report = verify(STRICT_COMPARISON_VIOLATION, CROSS_TC, mode="strict")
     parsed = json.loads(report.model_dump_json())
     assert "cross_claim_results" in parsed
+
+
+def test_strict_comparison_violation(strict_comparison):
+    report = verify(
+        strict_comparison["agent_output"],
+        strict_comparison["tool_calls"],
+        mode="strict",
+    )
+    assert report.summary.verdict == "fail"
+    assert len(report.cross_claim_results) == 1
+    assert report.cross_claim_results[0].violation_category == "comparison_violated"
+    assert report.cross_claim_results[0].severity == "error"
+    assert report.cross_claim_results[0].match_confidence == "high"
+
+
+def test_strict_ranking_violation(strict_ranking):
+    report = verify(
+        strict_ranking["agent_output"],
+        strict_ranking["tool_calls"],
+        mode="strict",
+    )
+    assert report.summary.verdict == "fail"
+    assert report.cross_claim_results[0].violation_category == "ranking_violated"
+    assert report.cross_claim_results[0].diff["actual_min_or_max"] == 150.0
+
+
+def test_strict_sum_violation(strict_sum):
+    report = verify(strict_sum["agent_output"], strict_sum["tool_calls"], mode="strict")
+    assert report.summary.verdict == "fail"
+    assert report.cross_claim_results[0].violation_category == "sum_mismatch"
+
+
+def test_strict_sum_pass():
+    tool_calls = [
+        {"call_id": "call_flights", "tool_name": "get_flights", "response": {"amount": 340}},
+        {"call_id": "call_hotel", "tool_name": "get_hotel", "response": {"amount": 450}},
+        {"call_id": "call_transfers", "tool_name": "get_transfers", "response": {"amount": 60}},
+        {"call_id": "call_total", "tool_name": "get_total", "response": {"amount": 850}},
+    ]
+    agent_output = {
+        "text": "Flights 340, hotel 450, transfers 60. Total: 850.",
+        "refs": [
+            {"span": [8, 11], "call_id": "call_flights", "path": "$.amount"},
+            {"span": [19, 22], "call_id": "call_hotel", "path": "$.amount"},
+            {"span": [34, 36], "call_id": "call_transfers", "path": "$.amount"},
+            {"span": [45, 48], "call_id": "call_total", "path": "$.amount"},
+        ],
+        "constraints": [
+            {
+                "constraint_id": "sum_pass_1",
+                "constraint_type": "sum",
+                "total_ref_index": 3,
+                "component_ref_indices": [0, 1, 2],
+            }
+        ],
+    }
+    report = verify(agent_output, tool_calls, mode="strict")
+    assert report.cross_claim_results[0].status == "pass"
+
+
+def test_strict_no_constraints_backward_compat_fixture(strict_basic):
+    report = verify(strict_basic["agent_output"], strict_basic["tool_calls"], mode="strict")
+    assert report.cross_claim_results == []
+    assert report.summary.cross_claim_violations == 0
+    assert json.loads(report.model_dump_json()) is not None
+
+
+def test_heuristic_sum_violation():
+    import warnings
+
+    tool_calls = [
+        {
+            "call_id": "c1",
+            "tool_name": "get_trip",
+            "response": {"flights": 340, "hotel": 450, "transfers": 60, "total": 900},
+        }
+    ]
+    text = "flights $340, hotel $450, transfers $60. Total: $900"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = verify(text, tool_calls, mode="heuristic")
+    assert report.summary.verdict == "warn"
+    assert report.cross_claim_results[0].violation_category == "sum_mismatch"
+    assert report.cross_claim_results[0].severity == "warning"
+    assert report.cross_claim_results[0].match_confidence == "medium"
+
+
+def test_heuristic_sum_pass():
+    import warnings
+
+    tool_calls = [
+        {
+            "call_id": "c1",
+            "tool_name": "get_trip",
+            "response": {"flights": 340, "hotel": 450, "transfers": 60, "total": 850},
+        }
+    ]
+    text = "flights $340, hotel $450, transfers $60. Total: $850"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = verify(text, tool_calls, mode="heuristic")
+    assert report.cross_claim_results[0].status == "pass"
+
+
+def test_cross_claim_disabled_with_fixture(strict_comparison):
+    report = verify(
+        strict_comparison["agent_output"],
+        strict_comparison["tool_calls"],
+        mode="strict",
+        checks={"cross_claim": {"enabled": False}},
+    )
+    assert report.cross_claim_results == []
+    assert report.summary.cross_claim_violations == 0
+
+
+def test_cross_claim_independent_of_match_result():
+    tool_calls = [
+        {
+            "call_id": "call_prices",
+            "tool_name": "get_prices",
+            "response": {"price_a": 700, "price_b": 900},
+        }
+    ]
+    agent_output = {
+        "text": "Flight A costs 100. Flight B costs 200.",
+        "refs": [
+            {"span": [15, 18], "call_id": "call_prices", "path": "$.price_a"},
+            {"span": [35, 38], "call_id": "call_prices", "path": "$.price_b"},
+        ],
+        "constraints": [
+            {
+                "constraint_id": "cmp_pass_1",
+                "constraint_type": "comparison",
+                "lhs_ref_index": 0,
+                "operator": "<",
+                "rhs_ref_index": 1,
+            }
+        ],
+    }
+    report = verify(agent_output, tool_calls, mode="strict")
+    assert report.cross_claim_results[0].status == "pass"
+    assert report.summary.errors > 0
+
+
+def test_all_fixtures_json_serializable(strict_comparison, strict_ranking, strict_sum):
+    for fixture in (strict_comparison, strict_ranking, strict_sum):
+        report = verify(fixture["agent_output"], fixture["tool_calls"], mode="strict")
+        parsed = json.loads(report.model_dump_json())
+        assert "cross_claim_results" in parsed

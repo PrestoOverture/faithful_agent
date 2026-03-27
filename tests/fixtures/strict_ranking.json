@@ -1,0 +1,31 @@
+{
+  "tool_calls": [
+    {
+      "call_id": "call_hotels",
+      "tool_name": "get_hotels",
+      "response": {
+        "hotel_a": {"price": 200},
+        "hotel_b": {"price": 150},
+        "hotel_c": {"price": 220}
+      }
+    }
+  ],
+  "agent_output": {
+    "text": "Hotel A: $200. Hotel B: $150. Hotel C: $220.",
+    "refs": [
+      {"span": [10, 13], "call_id": "call_hotels", "path": "$.hotel_a.price"},
+      {"span": [25, 28], "call_id": "call_hotels", "path": "$.hotel_b.price"},
+      {"span": [40, 43], "call_id": "call_hotels", "path": "$.hotel_c.price"}
+    ],
+    "constraints": [
+      {
+        "constraint_id": "rank_1",
+        "constraint_type": "ranking",
+        "rank_type": "min",
+        "ranked_ref_index": 0,
+        "candidate_ref_indices": [0, 1, 2]
+      }
+    ]
+  },
+  "expected_verdict": "fail"
+}
